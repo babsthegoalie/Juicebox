@@ -8,6 +8,7 @@ const {
   getAllPosts,
   updatePost,
   getPostById,
+  deletePostById // Double check this function
 } = require('../db');
 
 postsRouter.get('/', async (req, res, next) => {
@@ -38,15 +39,16 @@ postsRouter.get('/', async (req, res, next) => {
 });
 
 postsRouter.post('/', requireUser, async (req, res, next) => {
-  const { title, content = "" } = req.body;
+  const { title, content = "", tags } = req.body; // Extract 'tags' from the request body
 
-  const postData = {};
+  const postData = {
+    authorId: req.user.id,
+    title,
+    content,
+    tags: Array.isArray(tags) ? tags : (tags ? tags.trim().split(/\s+/) : []) // Handling multiple tags
+  };
 
   try {
-    postData.authorId = req.user.id;
-    postData.title = title;
-    postData.content = content;
-
     const post = await createPost(postData);
 
     if (post) {
@@ -55,7 +57,7 @@ postsRouter.post('/', requireUser, async (req, res, next) => {
       next({
         name: 'PostCreationError',
         message: 'There was an error creating your post. Please try again.'
-      })
+      });
     }
   } catch ({ name, message }) {
     next({ name, message });
@@ -98,7 +100,31 @@ postsRouter.patch('/:postId', requireUser, async (req, res, next) => {
 });
 
 postsRouter.delete('/:postId', requireUser, async (req, res, next) => {
-  res.send({ message: 'under construction' });
+  const { postId } = req.params;
+
+  try {
+    const postToDelete = await getPostById(postId);
+
+    if (!postToDelete) {
+      return next({
+        name: 'PostNotFoundError',
+        message: 'Post not found'
+      });
+    }
+
+    if (postToDelete.author.id !== req.user.id) {
+      return next({
+        name: 'UnauthorizedUserError',
+        message: 'You cannot delete a post that is not yours'
+      });
+    }
+
+    await deletePostById(postId); // Use your function to delete the post by ID
+
+    res.send({ message: 'Post deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = postsRouter;
